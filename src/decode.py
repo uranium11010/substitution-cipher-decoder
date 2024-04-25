@@ -13,6 +13,8 @@ M = np.array(pd.read_csv("data/letter_transition_matrix.csv", header=None))
 log_M = np.log2(M)
 log_M[np.isinf(log_M)] = -1e9
 
+with open("data/google-10000-english.txt", 'r') as f:
+    word_list = {line[:-1] for line in f.readlines()}
 
 with open("data/sample/plaintext.txt", 'r') as f:
     gold_plaintext = f.read()
@@ -143,6 +145,10 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
     return plaintext, log_probs[-1]
 
 
+def swap_letters(word, letter1, letter2):
+    return ''.join(letter1 if letter == letter2 else (letter2 if letter == letter1 else letter) for letter in word)
+
+
 def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
     if has_breakpoint:
         N = 20000
@@ -153,4 +159,8 @@ def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
     with Pool() as p:
         results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, debug) for seed in range(num_attempts)])
     plaintext, log_prob = max(results, key=lambda item: item[1])
+    plain_words = [word if word[-1] != '.' else word[:-1] for word in plaintext.split()]
+    plain_bad_words = [word for word in plain_words if word not in word_list]
+    if any(swap_letters(word, 'j', 'q') in word_list for word in plain_bad_words):
+        plaintext = swap_letters(plaintext, 'j', 'q')
     return plaintext
