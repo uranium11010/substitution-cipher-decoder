@@ -43,6 +43,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
     acceptances = []
     accs = []
     win_idx = None
+    bp = None
     if has_breakpoint:
         decode_map_l = np.random.permutation(len(ALPHABET))
         decode_map_r = np.random.permutation(len(ALPHABET))
@@ -142,25 +143,93 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
     # plt.xlabel("Iteration")
     # plt.ylabel("Decoding accuracy")
     # plt.savefig("acc.png")
-    return plaintext, log_probs[-1]
+    return plaintext, bp, log_probs[-1]
 
 
-def swap_letters(word, letter1, letter2):
-    return ''.join(letter1 if letter == letter2 else (letter2 if letter == letter1 else letter) for letter in word)
+def swap_letters(word, letter1, letter2, left_idx=0, right_idx=float('inf')):
+    return ''.join(letter1 if left_idx <= i < right_idx and letter == letter2
+                   else (letter2 if left_idx <= i < right_idx and letter == letter1
+                         else letter)
+                   for i, letter in enumerate(word))
+
+
+def strip_period(word):
+    return word if word[-1] != '.' else word[:-1]
+
+
+def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
+    cum_improvement = 0
+    if bp_idxs is None:
+        for it in range(N_finetune):
+            i = np.random.choice(len(ALPHABET))
+            j = np.random.choice(len(ALPHABET) - 1)
+            if j >= i:
+                j += 1
+            letter1 = ALPHABET[i]
+            letter2 = ALPHABET[j]
+            plain_words_swapped = [swap_letters(word, letter1, letter2) for word in plain_words]
+            improvement = sum((strip_period(word_swapped) in word_list) - (strip_period(word) in word_list)
+                              for word_swapped, word in zip(plain_words_swapped, plain_words))
+            if improvement > 0:
+                plain_words = plain_words_swapped
+                plaintext = swap_letters(plaintext, letter1, letter2)
+                cum_improvement += improvement
+    else:
+        bp, bp_word_idx, bp_char_idx = bp_idxs
+        for it in range(N_finetune):
+            i = np.random.choice(len(ALPHABET))
+            j = np.random.choice(len(ALPHABET) - 1)
+            if j >= i:
+                j += 1
+            letter1 = ALPHABET[i]
+            letter2 = ALPHABET[j]
+            left = np.random.uniform() < bp_word_idx / len(plain_words)
+            plain_words_swapped = [swap_letters(word, letter1, letter2)
+                                   if (left and i < bp_word_idx) or (not left and i > bp_word_idx)
+                                   else word
+                                   for i, word in enumerate(plain_words)]
+            improvement = sum((strip_period(word_swapped) in word_list) - (strip_period(word) in word_list)
+                              for word_swapped, word in zip(plain_words_swapped, plain_words))
+            bp_word = plain_words[bp_word_idx]
+            bp_word_swapped = swap_letters(bp_word, letter1, letter2,
+                                           left_idx=0 if left else bp_char_idx,
+                                           right_idx=bp_char_idx if left else len(bp_word))
+            improvement += (strip_period(bp_word_swapped) in word_list) - (strip_period(bp_word) in word_list)
+            if improvement > 0:
+                plain_words = plain_words_swapped
+                plaintext = swap_letters(plaintext, letter1, letter2,
+                                         left_idx=0 if left else bp,
+                                         right_idx=bp if left else len(plaintext))
+                cum_improvement += improvement
+    return plaintext, cum_improvement
 
 
 def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
+    np.random.seed(69420)
     if has_breakpoint:
         N = 20000
         num_attempts = 160
+        N_finetune = 2000
     else:
         N = 16000
         num_attempts = 200
+        N_finetune = 2000
     with Pool() as p:
         results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, debug) for seed in range(num_attempts)])
-    plaintext, log_prob = max(results, key=lambda item: item[1])
-    plain_words = [word if word[-1] != '.' else word[:-1] for word in plaintext.split()]
-    plain_bad_words = [word for word in plain_words if word not in word_list]
-    if any(swap_letters(word, 'j', 'q') in word_list for word in plain_bad_words):
-        plaintext = swap_letters(plaintext, 'j', 'q')
+    plaintext, bp, log_prob = max(results, key=lambda item: item[2])
+    if has_breakpoint:
+        plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
+        plain_words = plaintext_bp.split()
+        for bp_word_idx in range(len(plain_words)):
+            bp_char_idx = plain_words[bp_word_idx].find('|')
+            if bp_char_idx != -1:
+                break
+        bp_word = plain_words[bp_word_idx]
+        bp_word = bp_word[:bp_char_idx] + bp_word[bp_char_idx+1:]
+        plain_words[bp_word_idx] = bp_word
+        bp_idxs = (bp, bp_word_idx, bp_char_idx)
+    else:
+        plain_words = plaintext.split()
+        bp_idxs = None
+    plaintext, improvement = finetune_words(plaintext, plain_words, bp_idxs, N_finetune)
     return plaintext
