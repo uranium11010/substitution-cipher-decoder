@@ -1,2 +1,5 @@
 src/__pycache__/
 submission.zip
+*.png
+data/test_cases/
+*.log

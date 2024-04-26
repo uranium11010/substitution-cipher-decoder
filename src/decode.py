@@ -1,9 +1,12 @@
+import logging
+logger = logging.getLogger(__name__)
+
 import numpy as np
 import pandas as pd
 import matplotlib
 from multiprocessing import Pool
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from .encode import ALPHABET, LETTER_TO_IDX
 
@@ -34,12 +37,13 @@ def get_plain_log_prob_bp(cipher_inds, decode_map_l, decode_map_r, bp):
     return plain_inds, log_prob
 
 
-def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=False):
+def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_name="test", debug=False):
     gold_plain_inds = np.array([LETTER_TO_IDX[c] for c in gold_plaintext[:len(ciphertext)]])
     np.random.seed(seed)
     plaintext = ciphertext
     cipher_inds = np.array([LETTER_TO_IDX[c] for c in ciphertext])
     log_probs = []
+    acceptance_log_probs = []
     acceptances = []
     accs = []
     win_idx = None
@@ -71,8 +75,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
                 new_decode_map_l = decode_map_l
                 new_decode_map_r = decode_map_r
             new_plain_inds, new_log_prob = get_plain_log_prob_bp(cipher_inds, new_decode_map_l, new_decode_map_r, new_bp)
-            a = np.exp2(new_log_prob - log_prob)
-            # print(a)
+            acceptance_log_probs.append(new_log_prob - log_prob)
             if np.random.uniform() < np.exp2(new_log_prob - log_prob):
                 decode_map_l = new_decode_map_l
                 decode_map_r = new_decode_map_r
@@ -88,9 +91,9 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
             if win_idx is None and accs[-1] >= 0.99:
                 win_idx = it
             if debug and (it + 1) % 1000 == 0:
-                print(it)
-                print(accs[-1])
-                print(plaintext)
+                logger.info(it)
+                logger.info(accs[-1])
+                logger.info(plaintext)
         # print("win:", win_idx)
     else:
         decode_map = np.random.permutation(len(ALPHABET))
@@ -103,8 +106,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
                 j += 1
             new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
             new_plain_inds, new_log_prob = get_plain_log_prob(cipher_inds, new_decode_map)
-            a = np.exp2(new_log_prob - log_prob)
-            # print(a)
+            acceptance_log_probs.append(new_log_prob - log_prob)
             if np.random.uniform() < np.exp2(new_log_prob - log_prob):
                 decode_map = new_decode_map
                 plain_inds = new_plain_inds
@@ -116,33 +118,41 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, debug=
             log_probs.append(log_prob)
             accs.append(np.mean(plain_inds == gold_plain_inds))
             if debug and (it + 1) % 1000 == 0:
-                print(it)
-                print(accs[-1])
-                print(plaintext)
+                logger.info(it)
+                logger.info(accs[-1])
+                logger.info(plaintext)
     # print(''.join(np.array(['0', '1'])[(plain_inds == gold_plain_inds).astype(int)]))
-    # PLOT LOG PROB OF ACCEPTED STATE
-    # plt.subplots_adjust(left=0.2)
-    # plt.plot(np.arange(N), np.array(log_probs) / len(ciphertext))
-    # plt.ylim([-11, 0])
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Log probability per symbol (bits)")
-    # plt.savefig("log_probs_per_sym.png")
-    # print(log_probs[-1] / len(ciphertext))
-    # PLOT ACCEPTANCE RATIO
-    # W = 200
-    # sliding_sums = [np.sum(acceptances[:W])]
-    # for t in range(W, len(acceptances)):
-    #     sliding_sums.append(sliding_sums[-1] + acceptances[t] - acceptances[t-W])
-    # plt.plot(np.arange(W - 1, len(acceptances)), np.array(sliding_sums) / W)
-    # plt.xlim([0, 2600])
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Acceptance rate")
-    # plt.savefig("acceptance.png")
-    # PLOT DECODING ACCURACY
-    # plt.plot(np.arange(N), accs)
-    # plt.xlabel("Iteration")
-    # plt.ylabel("Decoding accuracy")
-    # plt.savefig("acc.png")
+    if debug:
+        # PLOT LOG PROB OF ACCEPTANCE RATIO
+        acceptance_probs = np.exp2(acceptance_log_probs)
+        acceptance_probs[acceptance_probs > 2.2] = 2.2
+        plt.scatter(np.arange(N), acceptance_probs, s=1, marker='.')
+        plt.xlabel("Iteration")
+        plt.ylabel("Acceptance ratio")
+        plt.savefig(f"{test_name}_s{seed}_probs_A.png")
+        # PLOT LOG PROB OF ACCEPTED STATE
+        # plt.subplots_adjust(left=0.2)
+        # plt.plot(np.arange(N), np.array(log_probs) / len(ciphertext))
+        # plt.ylim([-11, 0])
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Log probability per symbol (bits)")
+        # plt.savefig("log_probs_per_sym.png")
+        # print(log_probs[-1] / len(ciphertext))
+        # PLOT ACCEPTANCE RATIO
+        # W = 200
+        # sliding_sums = [np.sum(acceptances[:W])]
+        # for t in range(W, len(acceptances)):
+        #     sliding_sums.append(sliding_sums[-1] + acceptances[t] - acceptances[t-W])
+        # plt.plot(np.arange(W - 1, len(acceptances)), np.array(sliding_sums) / W)
+        # plt.xlim([0, 2600])
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Acceptance rate")
+        # plt.savefig("acceptance.png")
+        # PLOT DECODING ACCURACY
+        # plt.plot(np.arange(N), accs)
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Decoding accuracy")
+        # plt.savefig("acc.png")
     return plaintext, bp, log_probs[-1]
 
 
@@ -204,7 +214,8 @@ def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
     return plaintext, cum_improvement
 
 
-def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
+def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug: bool = False) -> str:
+    logging.basicConfig(filename=f"debug_{test_name}.log", level=logging.INFO)
     np.random.seed(69420)
     if has_breakpoint:
         N = 20000
@@ -215,7 +226,7 @@ def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
         num_attempts = 200
         N_finetune = 2000
     with Pool() as p:
-        results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, debug) for seed in range(num_attempts)])
+        results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, test_name, debug) for seed in range(num_attempts)])
     plaintext, bp, log_prob = max(results, key=lambda item: item[2])
     if has_breakpoint:
         plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
@@ -232,4 +243,6 @@ def decode(ciphertext: str, has_breakpoint: bool, debug=False) -> str:
         plain_words = plaintext.split()
         bp_idxs = None
     plaintext, improvement = finetune_words(plaintext, plain_words, bp_idxs, N_finetune)
+    logger.info(f"Finetune improvement: {improvement}")
+    logger.info(f"Final: {plaintext}")
     return plaintext

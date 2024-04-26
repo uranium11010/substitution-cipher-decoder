@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 import traceback
+import argparse
 
 
 def first_line(file_path):
@@ -38,6 +39,8 @@ def run_decode_cli(
     has_breakpoint: bool,
     command_prefix: Optional[List[str]] = None,
     timeout_secs: Optional[float] = None,
+    test_name: Optional[str] = None,
+    debug: bool = False,
 ) -> RunResult:
     """
     return: output, elapsed_secs, crash_reason
@@ -72,6 +75,8 @@ def run_decode_cli(
                 f"./{executable_file}",
                 ciphertext,
                 str(has_breakpoint),
+                test_name or "test",
+                str(debug),
             ],
             start_new_session=True,
             stdout=subprocess.PIPE,
@@ -139,47 +144,81 @@ def fail_if_crash(rr: RunResult):
     exit(-1)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bp", action="store_true")
+    parser.add_argument("--no_bp", action="store_true")
+    parser.add_argument("--short", action="store_true")
+    parser.add_argument("--length", nargs='+', type=int)
+    parser.add_argument("--select", nargs='+')
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+    assert args.length is None or len(args.length) == 2
+    if not args.bp and not args.no_bp:
+        args.bp = True
+        args.no_bp = True
+    return args
+
+
 def main():
+    args = parse_args()
+
     from src.encode import assert_clean
 
     logging.basicConfig(format="%(levelname)s - %(message)s")
 
     executable_path = "./decode-cli"
-    plaintext = first_line("data/sample/short_plaintext.txt")
-    ciphertext = first_line("data/sample/short_ciphertext.txt")
-    ciphertext_with_breakpoint = first_line(
-        "data/sample/short_ciphertext_breakpoint.txt")
     dummy_text = "the quick brown fox jumped over the lazy dog."
-
-    assert_clean(plaintext)
     assert_clean(dummy_text)
 
-    print("Running no breakpoint test...")
-    res = run_decode_cli(executable_path, ciphertext, False)
-    fail_if_crash(res)
-    print(
-        f"Score (no breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
-    )
-    print(f"Elapsed secs (no breakpoint): {res.elapsed_secs}")
-    print()
+    test_case_path = "data/test_cases"
+    for test_file in os.listdir(test_case_path):
+        test_name, ext = os.path.splitext(test_file)
+        if ext != '.out':
+            continue
 
-    print("Running breakpoint test...")
-    res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True)
-    fail_if_crash(res)
-    print(
-        f"Score (breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
-    )
-    print(f"Elapsed secs (breakpoint): {res.elapsed_secs}")
-    print()
+        if args.select is not None and test_name not in args.select:
+            continue
+        if args.short != (test_name[-1] == 's'):
+            continue
+        plaintext = first_line(os.path.join(test_case_path, test_file))
+        if args.length is not None and not (args.length[0] <= len(plaintext) <= args.length[1]):
+            continue
+        print(f"Testing {test_name}. Length: {len(plaintext)}")
+
+        if args.no_bp:
+            ciphertext = first_line(os.path.join(test_case_path, test_name + '.in'))
+            print("Running no breakpoint test...")
+            res = run_decode_cli(executable_path, ciphertext, False, test_name=test_name, debug=args.debug)
+            fail_if_crash(res)
+            print(
+                f"Score (no breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
+            )
+            print(f"Elapsed secs (no breakpoint): {res.elapsed_secs}")
+            print()
+
+        if args.bp:
+            ciphertext_with_breakpoint = first_line(os.path.join(test_case_path, test_name + '_bp.in'))
+            print("Running breakpoint test...")
+            res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True, test_name=f"{test_name}_bp", debug=args.debug)
+            fail_if_crash(res)
+            print(
+                f"Score (breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
+            )
+            print(f"Elapsed secs (breakpoint): {res.elapsed_secs}")
+            print()
+
+        print("SUCCESS")
+        print(f"decode-cli ran succesfully on {test_name}.")
+        print()
+        print()
 
     print("Checking that you are not hardcoding inputs...")
     res = run_decode_cli(executable_path, dummy_text, False)
     fail_if_crash(res)
     count_matches(dummy_text, res.stdout)
-    print()
+    print("DONE")
 
-    print("SUCCESS")
-    print("decode-cli ran succesfully on sample data.")
 
 
 if __name__ == "__main__":

@@ -20,8 +20,6 @@ import time
 from src.decode import decode
 
 has_breakpoint = sys.argv[2].lower() == "true"
-debug = False
-start = time.time()
-print(decode(sys.argv[1], has_breakpoint, debug=debug))
-if debug:
-    print(time.time() - start)
+test_name = sys.argv[3] if len(sys.argv) > 3 else "test"
+debug = sys.argv[4].lower() == "true" if len(sys.argv) > 4 else False
+print(decode(sys.argv[1], has_breakpoint, test_name=test_name, debug=debug))
