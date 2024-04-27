@@ -53,10 +53,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_n
         plain_inds, log_prob = get_plain_log_prob_bp(cipher_inds, decode_map_l, decode_map_r, bp)
         for it in range(N):
             if np.random.uniform() < 0.9:
-                i = np.random.choice(len(ALPHABET))
-                j = np.random.choice(len(ALPHABET) - 1)
-                if j >= i:
-                    j += 1
+                i, j = random_idx_pair(len(ALPHABET))
                 if np.random.uniform() < 1/2:
                     new_decode_map_l = np.copy(decode_map_l)
                     new_decode_map_l[i], new_decode_map_l[j] = new_decode_map_l[j], new_decode_map_l[i]
@@ -94,10 +91,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_n
         plain_inds, log_prob = get_plain_log_prob(cipher_inds, decode_map)
         for it in range(N):
             new_decode_map = np.copy(decode_map)
-            i = np.random.choice(len(ALPHABET))
-            j = np.random.choice(len(ALPHABET) - 1)
-            if j >= i:
-                j += 1
+            i, j = random_idx_pair(len(ALPHABET))
             new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
             new_plain_inds, new_log_prob = get_plain_log_prob(cipher_inds, new_decode_map)
             acceptance_log_probs.append(new_log_prob - log_prob)
@@ -160,51 +154,62 @@ def strip_period(word):
     return word if not word or word[-1] != '.' else word[:-1]
 
 
+def random_idx_pair(num_idxs, skip=None):
+    i = np.random.choice(num_idxs - (skip is not None))
+    j = np.random.choice(num_idxs - 1 - (skip is not None))
+    if j >= i:
+        j += 1
+    if skip is not None:
+        if i >= skip:
+            i += 1
+        if j >= skip:
+            j += 1
+    return i, j
+
+
 def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
-    cum_improvement = 0
+    num_bad = init_num_bad = sum(strip_period(word) not in word_list for word in plain_words)
+    if num_bad == 0:
+        return plaintext, 0
     if bp_idxs is None:
         for it in range(N_finetune):
-            i = np.random.choice(len(ALPHABET))
-            j = np.random.choice(len(ALPHABET) - 1)
-            if j >= i:
-                j += 1
+            i, j = random_idx_pair(len(ALPHABET), skip=LETTER_TO_IDX[' '])
             letter1 = ALPHABET[i]
             letter2 = ALPHABET[j]
             plain_words_swapped = [swap_letters(word, letter1, letter2) for word in plain_words]
-            improvement = sum((strip_period(word_swapped) in word_list) - (strip_period(word) in word_list)
-                              for word_swapped, word in zip(plain_words_swapped, plain_words))
-            if improvement > 0:
+            new_num_bad = sum(strip_period(word_swapped) not in word_list for word_swapped in plain_words_swapped)
+            if new_num_bad < num_bad:
                 plain_words = plain_words_swapped
                 plaintext = swap_letters(plaintext, letter1, letter2)
-                cum_improvement += improvement
+                num_bad = new_num_bad
+                if num_bad == 0:
+                    break
     else:
         bp, bp_word_idx, bp_char_idx = bp_idxs
         for it in range(N_finetune):
-            i = np.random.choice(len(ALPHABET))
-            j = np.random.choice(len(ALPHABET) - 1)
-            if j >= i:
-                j += 1
+            i, j = random_idx_pair(len(ALPHABET), skip=LETTER_TO_IDX[' '])
             letter1 = ALPHABET[i]
             letter2 = ALPHABET[j]
             left = np.random.uniform() < bp_word_idx / len(plain_words)
             plain_words_swapped = [swap_letters(word, letter1, letter2)
-                                   if (left and i < bp_word_idx) or (not left and i > bp_word_idx)
+                                   if left == (i < bp_word_idx)
                                    else word
                                    for i, word in enumerate(plain_words)]
-            improvement = sum((strip_period(word_swapped) in word_list) - (strip_period(word) in word_list)
-                              for word_swapped, word in zip(plain_words_swapped, plain_words))
             bp_word = plain_words[bp_word_idx]
             bp_word_swapped = swap_letters(bp_word, letter1, letter2,
                                            left_idx=0 if left else bp_char_idx,
                                            right_idx=bp_char_idx if left else len(bp_word))
-            improvement += (strip_period(bp_word_swapped) in word_list) - (strip_period(bp_word) in word_list)
-            if improvement > 0:
+            plain_words_swapped[bp_word_idx] = bp_word_swapped
+            new_num_bad = sum(strip_period(word_swapped) not in word_list for word_swapped in plain_words_swapped)
+            if new_num_bad < num_bad:
                 plain_words = plain_words_swapped
                 plaintext = swap_letters(plaintext, letter1, letter2,
                                          left_idx=0 if left else bp,
                                          right_idx=bp if left else len(plaintext))
-                cum_improvement += improvement
-    return plaintext, cum_improvement
+                num_bad = new_num_bad
+                if num_bad == 0:
+                    break
+    return plaintext, init_num_bad - num_bad
 
 
 def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug: bool = False) -> str:
