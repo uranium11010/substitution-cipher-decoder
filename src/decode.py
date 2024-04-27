@@ -167,7 +167,8 @@ def random_idx_pair(num_idxs, skip=None):
     return i, j
 
 
-def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
+def finetune_words(plaintext, plain_words, bp_idxs, N_finetune, seed=None):
+    np.random.seed(seed)
     num_bad = init_num_bad = sum(strip_period(word) not in word_list for word in plain_words)
     if num_bad == 0:
         return plaintext, 0
@@ -220,28 +221,31 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
         N = 20000
         num_attempts = 160
         N_finetune = 2000
+        num_attempts_finetune = 4
     else:
         N = 16000
         num_attempts = 200
         N_finetune = 2000
+        num_attempts_finetune = 4
     with Pool() as p:
         results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, test_name, debug) for seed in range(num_attempts)])
-    plaintext, bp, log_prob = max(results, key=lambda item: item[2])
-    if has_breakpoint:
-        plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
-        plain_words = plaintext_bp.split()
-        for bp_word_idx in range(len(plain_words)):
-            bp_char_idx = plain_words[bp_word_idx].find('|')
-            if bp_char_idx != -1:
-                break
-        bp_word = plain_words[bp_word_idx]
-        bp_word = bp_word[:bp_char_idx] + bp_word[bp_char_idx+1:]
-        plain_words[bp_word_idx] = bp_word
-        bp_idxs = (bp, bp_word_idx, bp_char_idx)
-    else:
-        plain_words = plaintext.split()
-        bp_idxs = None
-    plaintext, improvement = finetune_words(plaintext, plain_words, bp_idxs, N_finetune)
+        plaintext, bp, log_prob = max(results, key=lambda item: item[2])
+        if has_breakpoint:
+            plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
+            plain_words = plaintext_bp.split()
+            for bp_word_idx in range(len(plain_words)):
+                bp_char_idx = plain_words[bp_word_idx].find('|')
+                if bp_char_idx != -1:
+                    break
+            bp_word = plain_words[bp_word_idx]
+            bp_word = bp_word[:bp_char_idx] + bp_word[bp_char_idx+1:]
+            plain_words[bp_word_idx] = bp_word
+            bp_idxs = (bp, bp_word_idx, bp_char_idx)
+        else:
+            plain_words = plaintext.split()
+            bp_idxs = None
+        finetune_results = p.starmap(finetune_words, [(plaintext, plain_words, bp_idxs, N_finetune, seed) for seed in range(num_attempts_finetune)])
+    plaintext, improvement = max(finetune_results, key=lambda item: item[1])
     if debug:
         logger.info(f"Finetune improvement: {improvement}")
         logger.info(f"Final: {plaintext}")
