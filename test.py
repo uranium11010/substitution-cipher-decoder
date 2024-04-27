@@ -172,8 +172,10 @@ def main():
     assert_clean(dummy_text)
 
     test_case_path = "data/test_cases"
-    total_match = 0
-    total_compared = 0
+    total_match_no_bp = 0
+    total_compared_no_bp = 0
+    total_match_bp = 0
+    total_compared_bp = 0
     test_names = []
     for test_file in os.listdir(test_case_path):
         test_name, ext = os.path.splitext(test_file)
@@ -201,8 +203,8 @@ def main():
             res = run_decode_cli(executable_path, ciphertext, False, test_name=test_name, debug=args.debug)
             fail_if_crash(res)
             num_match = count_matches(plaintext, res.stdout)
-            total_match += num_match
-            total_compared += len(plaintext)
+            total_match_no_bp += num_match
+            total_compared_no_bp += len(plaintext)
             print(
                 f"Score (no breakpoint): {num_match} out of {len(plaintext)}"
             )
@@ -215,8 +217,8 @@ def main():
             res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True, test_name=f"{test_name}_bp", debug=args.debug)
             fail_if_crash(res)
             num_match = count_matches(plaintext, res.stdout)
-            total_match += num_match
-            total_compared += len(plaintext)
+            total_match_bp += num_match
+            total_compared_bp += len(plaintext)
             print(
                 f"Score (breakpoint): {num_match} out of {len(plaintext)}"
             )
@@ -228,7 +230,12 @@ def main():
         print()
         print()
 
-    print(f"Total score: {total_match} out of {total_compared}")
+    total_match = total_match_bp + total_match_no_bp
+    total_compared = total_compared_bp + total_compared_no_bp
+    print(f"Total score: {total_match}/{total_compared} = {total_match / total_compared}")
+    if args.bp and args.no_bp:
+        print(f"No breakpoint score: {total_match_no_bp}/{total_compared_no_bp} = {total_match_no_bp / total_compared_no_bp}")
+        print(f"Breakpoint score: {total_match_bp}/{total_compared_bp} = {total_match_bp / total_compared_bp}")
     print()
 
     print("Checking that you are not hardcoding inputs...")

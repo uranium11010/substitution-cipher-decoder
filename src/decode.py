@@ -13,11 +13,11 @@ from .encode import ALPHABET, LETTER_TO_IDX
 # P = np.array(pd.read_csv("data/letter_probabilities.csv", header=None))[0]
 P = np.load("begin_2gram_probs_google.npy")
 log_P = np.log2(P)
-log_P[np.isinf(log_P)] = -100
+log_P[np.isinf(log_P)] = -25
 # M = np.array(pd.read_csv("data/letter_transition_matrix.csv", header=None))
 M = np.load("transitions_3gram_google.npy")
 log_M = np.log2(M)
-log_M[np.isinf(log_M)] = -100
+log_M[np.isinf(log_M)] = -25
 
 with open("data/google-10000-english.txt", 'r') as f:
     word_list = {line[:-1] for line in f.readlines()}
@@ -100,8 +100,8 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_n
                 j += 1
             new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
             new_plain_inds, new_log_prob = get_plain_log_prob(cipher_inds, new_decode_map)
-            acceptance_log_probs.append((new_log_prob - log_prob) / (1 - 0 * it/N))
-            if np.random.uniform() < np.exp2((new_log_prob - log_prob) / (1 - 0 * it/N)):
+            acceptance_log_probs.append(new_log_prob - log_prob)
+            if np.random.uniform() < np.exp2(new_log_prob - log_prob):
                 decode_map = new_decode_map
                 plain_inds = new_plain_inds
                 log_prob = new_log_prob
@@ -212,11 +212,11 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
     np.random.seed(69420)
     if has_breakpoint:
         N = 20000
-        num_attempts = 16
+        num_attempts = 160
         N_finetune = 2000
     else:
         N = 16000
-        num_attempts = 20
+        num_attempts = 200
         N_finetune = 2000
     with Pool() as p:
         results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, test_name, debug) for seed in range(num_attempts)])
