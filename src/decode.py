@@ -208,7 +208,8 @@ def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
 
 
 def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug: bool = False) -> str:
-    logging.basicConfig(filename=f"debug_{test_name}.log", level=logging.INFO)
+    if debug:
+        logging.basicConfig(filename=f"debug_{test_name}.log", level=logging.INFO)
     np.random.seed(69420)
     if has_breakpoint:
         N = 20000
@@ -236,6 +237,7 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
         plain_words = plaintext.split()
         bp_idxs = None
     plaintext, improvement = finetune_words(plaintext, plain_words, bp_idxs, N_finetune)
-    logger.info(f"Finetune improvement: {improvement}")
-    logger.info(f"Final: {plaintext}")
+    if debug:
+        logger.info(f"Finetune improvement: {improvement}")
+        logger.info(f"Final: {plaintext}")
     return plaintext

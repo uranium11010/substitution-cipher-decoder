@@ -1,0 +1,1 @@
+zip -r submission.zip . -x data/test_cases/ data/test_cases/* data/google-books-common-words.txt *.png *.log .gitignore .git/ .git/* .git/*/ .git/*/* .git/*/*/ .git/*/*/* .git/*/*/*/ .git/*/*/*/* .git/*/*/*/*/ .git/*/*/*/*/* src/__pycache__/ src/__pycache__/*
