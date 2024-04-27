@@ -2,7 +2,7 @@ import os
 import random
 random.seed(0)
 
-from src.encode import assert_clean, encode, encode_with_breakpoint
+from src.encode import encode, encode_with_breakpoint
 
 plaintext_files = ["data/texts/feynman.txt", "data/texts/milton.txt", "data/texts/tolstoy.txt"]
 test_case_dir = "data/test_cases"

@@ -172,11 +172,13 @@ def main():
     assert_clean(dummy_text)
 
     test_case_path = "data/test_cases"
+    total_match = 0
+    total_compared = 0
+    test_names = []
     for test_file in os.listdir(test_case_path):
         test_name, ext = os.path.splitext(test_file)
         if ext != '.out':
             continue
-
         if args.select is not None and test_name not in args.select:
             continue
         if args.short != (test_name[-1] == 's'):
@@ -184,15 +186,25 @@ def main():
         plaintext = first_line(os.path.join(test_case_path, test_file))
         if args.length is not None and not (args.length[0] <= len(plaintext) <= args.length[1]):
             continue
-        print(f"Testing {test_name}. Length: {len(plaintext)}")
+        test_names.append(test_name)
+
+    print(f"{len(test_names)} tests selected")
+    print()
+    for i, test_name in enumerate(sorted(test_names)):
+        plaintext = first_line(os.path.join(test_case_path, test_name + '.out'))
+        print(f"Test #{i+1}: {test_name}")
+        print(f"Length: {len(plaintext)}")
 
         if args.no_bp:
             ciphertext = first_line(os.path.join(test_case_path, test_name + '.in'))
             print("Running no breakpoint test...")
             res = run_decode_cli(executable_path, ciphertext, False, test_name=test_name, debug=args.debug)
             fail_if_crash(res)
+            num_match = count_matches(plaintext, res.stdout)
+            total_match += num_match
+            total_compared += len(plaintext)
             print(
-                f"Score (no breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
+                f"Score (no breakpoint): {num_match} out of {len(plaintext)}"
             )
             print(f"Elapsed secs (no breakpoint): {res.elapsed_secs}")
             print()
@@ -202,8 +214,11 @@ def main():
             print("Running breakpoint test...")
             res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True, test_name=f"{test_name}_bp", debug=args.debug)
             fail_if_crash(res)
+            num_match = count_matches(plaintext, res.stdout)
+            total_match += num_match
+            total_compared += len(plaintext)
             print(
-                f"Score (breakpoint): {count_matches(plaintext, res.stdout)} out of {len(plaintext)}"
+                f"Score (breakpoint): {num_match} out of {len(plaintext)}"
             )
             print(f"Elapsed secs (breakpoint): {res.elapsed_secs}")
             print()
@@ -212,6 +227,9 @@ def main():
         print(f"decode-cli ran succesfully on {test_name}.")
         print()
         print()
+
+    print(f"Total score: {total_match} out of {total_compared}")
+    print()
 
     print("Checking that you are not hardcoding inputs...")
     res = run_decode_cli(executable_path, dummy_text, False)
