@@ -157,7 +157,7 @@ def swap_letters(word, letter1, letter2, left_idx=0, right_idx=float('inf')):
 
 
 def strip_period(word):
-    return word if word[-1] != '.' else word[:-1]
+    return word if not word or word[-1] != '.' else word[:-1]
 
 
 def finetune_words(plaintext, plain_words, bp_idxs, N_finetune):
