@@ -5,7 +5,6 @@ logger = logging.getLogger(__name__)
 
 
 import numpy as np
-from numpy.typing import NDArray
 import pandas as pd
 import matplotlib
 from multiprocessing import Pool
@@ -36,7 +35,7 @@ for word_length, words in word_list_dict.items():
     word_array_dict[word_length] = np.vstack(words)
 
 
-def get_log_prob(plain_inds: NDArray, use_words=False):
+def get_log_prob(plain_inds: np.ndarray, use_words=False):
     # return log_P[plain_inds[0]] + np.sum(log_M[plain_inds[1:], plain_inds[:-1]])
     trigram_log_prob = log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
     if not use_words:
@@ -82,11 +81,11 @@ class Cipher(ABC):
         return CipherNoBp(ciphertext_len)
 
     @abstractmethod
-    def transition(self):
+    def transition(self) -> 'Cipher':
         pass
 
     @abstractmethod
-    def decode(self, cipher_inds: NDArray) -> NDArray:
+    def decode(self, cipher_inds: np.ndarray) -> np.ndarray:
         pass
 
 
@@ -98,13 +97,13 @@ class CipherNoBp(Cipher):
         else:
             self.decode_map = decode_map
 
-    def transition(self) -> CipherNoBp:
+    def transition(self) -> 'CipherNoBp':
         new_decode_map = np.copy(self.decode_map)
         i, j = random_idx_pair(len(ALPHABET))
         new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
         return CipherNoBp(self.ciphertext_len, new_decode_map)
 
-    def decode(self, cipher_inds: NDArray) -> NDArray:
+    def decode(self, cipher_inds: np.ndarray) -> np.ndarray:
         return self.decode_map[cipher_inds]
 
 
@@ -124,7 +123,7 @@ class CipherBp(Cipher):
         else:
             self.bp = bp
 
-    def transition(self) -> CipherBp:
+    def transition(self) -> 'CipherBp':
         if np.random.uniform() < 0.9:
             i, j = random_idx_pair(len(ALPHABET))
             if np.random.uniform() < 0.5:
@@ -144,7 +143,7 @@ class CipherBp(Cipher):
             new_decode_map_r = self.decode_map_r
         return CipherBp(self.ciphertext_len, new_decode_map_l, new_decode_map_r, new_bp)
 
-    def decode(self, cipher_inds: NDArray) -> NDArray:
+    def decode(self, cipher_inds: np.ndarray) -> np.ndarray:
         plain_inds = np.concatenate([self.decode_map_l[cipher_inds[:self.bp]], self.decode_map_r[cipher_inds[self.bp:]]])
         return plain_inds
 
