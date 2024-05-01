@@ -1,7 +1,12 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
 import logging
 logger = logging.getLogger(__name__)
 
+
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 import matplotlib
 from multiprocessing import Pool
@@ -23,90 +28,130 @@ with open("data/google-10000-english.txt", 'r') as f:
     word_list = {line[:-1] for line in f.readlines()}
 
 
-def get_plain_log_prob(cipher_inds, decode_map):
-    plain_inds = decode_map[cipher_inds]
-    # log_prob = log_P[plain_inds[0]] + np.sum(log_M[plain_inds[1:], plain_inds[:-1]])
-    log_prob = log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
-    return plain_inds, log_prob
+def get_log_prob(plain_inds: NDArray):
+    # return log_P[plain_inds[0]] + np.sum(log_M[plain_inds[1:], plain_inds[:-1]])
+    return log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
 
 
-def get_plain_log_prob_bp(cipher_inds, decode_map_l, decode_map_r, bp):
-    plain_inds = np.concatenate([decode_map_l[cipher_inds[:bp]], decode_map_r[cipher_inds[bp:]]])
-    # log_prob = log_P[plain_inds[0]] + np.sum(log_M[plain_inds[1:], plain_inds[:-1]])
-    log_prob = log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
-    return plain_inds, log_prob
+def random_idx_pair(num_idxs, skip=None):
+    i = np.random.choice(num_idxs - (skip is not None))
+    j = np.random.choice(num_idxs - 1 - (skip is not None))
+    if j >= i:
+        j += 1
+    if skip is not None:
+        if i >= skip:
+            i += 1
+        if j >= skip:
+            j += 1
+    return i, j
+
+
+class Cipher(ABC):
+    @staticmethod
+    def new(has_bp: bool, ciphertext_len: int):
+        if has_bp:
+            return CipherBp(ciphertext_len)
+        return CipherNoBp(ciphertext_len)
+
+    @abstractmethod
+    def transition(self) -> Cipher:
+        pass
+
+    @abstractmethod
+    def decode(self, cipher_inds: NDArray) -> NDArray:
+        pass
+
+
+class CipherNoBp(Cipher):
+    def __init__(self, ciphertext_len, decode_map=None):
+        self.ciphertext_len = ciphertext_len
+        if decode_map is None:
+            self.decode_map = np.random.permutation(len(ALPHABET))
+        else:
+            self.decode_map = decode_map
+
+    def transition(self) -> CipherNoBp:
+        new_decode_map = np.copy(self.decode_map)
+        i, j = random_idx_pair(len(ALPHABET))
+        new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
+        return CipherNoBp(self.ciphertext_len, new_decode_map)
+
+    def decode(self, cipher_inds: NDArray) -> NDArray:
+        return self.decode_map[cipher_inds]
+
+
+class CipherBp(Cipher):
+    def __init__(self, ciphertext_len, decode_map_l=None, decode_map_r=None, bp=None):
+        self.ciphertext_len = ciphertext_len
+        if decode_map_l is None:
+            self.decode_map_l = np.random.permutation(len(ALPHABET))
+        else:
+            self.decode_map_l = decode_map_l
+        if decode_map_r is None:
+            self.decode_map_r = np.random.permutation(len(ALPHABET))
+        else:
+            self.decode_map_r = decode_map_r
+        if bp is None:
+            self.bp = ciphertext_len // 2
+        else:
+            self.bp = bp
+
+    def transition(self) -> CipherBp:
+        if np.random.uniform() < 0.9:
+            i, j = random_idx_pair(len(ALPHABET))
+            if np.random.uniform() < 0.5:
+                new_decode_map_l = np.copy(self.decode_map_l)
+                new_decode_map_l[i], new_decode_map_l[j] = new_decode_map_l[j], new_decode_map_l[i]
+                new_decode_map_r = self.decode_map_r
+            else:
+                new_decode_map_r = np.copy(self.decode_map_r)
+                new_decode_map_r[i], new_decode_map_r[j] = new_decode_map_r[j], new_decode_map_r[i]
+                new_decode_map_l = self.decode_map_l
+            new_bp = self.bp
+        else:
+            new_bp = self.bp
+            while new_bp == self.bp or new_bp == 0 or new_bp == self.ciphertext_len:
+                new_bp = np.random.binomial(self.ciphertext_len, self.bp / self.ciphertext_len)
+            new_decode_map_l = self.decode_map_l
+            new_decode_map_r = self.decode_map_r
+        return CipherBp(self.ciphertext_len, new_decode_map_l, new_decode_map_r, new_bp)
+
+    def decode(self, cipher_inds: NDArray) -> NDArray:
+        plain_inds = np.concatenate([self.decode_map_l[cipher_inds[:self.bp]], self.decode_map_r[cipher_inds[self.bp:]]])
+        return plain_inds
 
 
 def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_name="test", debug=False):
+    if debug:
+        log_probs = []
+        acceptance_log_probs = []
+        acceptances = []
     np.random.seed(seed)
-    plaintext = ciphertext
     cipher_inds = np.array([LETTER_TO_IDX[c] for c in ciphertext])
-    log_probs = []
-    acceptance_log_probs = []
-    acceptances = []
-    win_idx = None
-    bp = None
-    if has_breakpoint:
-        decode_map_l = np.random.permutation(len(ALPHABET))
-        decode_map_r = np.random.permutation(len(ALPHABET))
-        bp = len(ciphertext) // 2
-        plain_inds, log_prob = get_plain_log_prob_bp(cipher_inds, decode_map_l, decode_map_r, bp)
-        for it in range(N):
-            if np.random.uniform() < 0.9:
-                i, j = random_idx_pair(len(ALPHABET))
-                if np.random.uniform() < 1/2:
-                    new_decode_map_l = np.copy(decode_map_l)
-                    new_decode_map_l[i], new_decode_map_l[j] = new_decode_map_l[j], new_decode_map_l[i]
-                    new_decode_map_r = decode_map_r
-                else:
-                    new_decode_map_r = np.copy(decode_map_r)
-                    new_decode_map_r[i], new_decode_map_r[j] = new_decode_map_r[j], new_decode_map_r[i]
-                    new_decode_map_l = decode_map_l
-                new_bp = bp
-            else:
-                new_bp = bp
-                while new_bp == bp or new_bp == 0 or new_bp == len(ciphertext):
-                    new_bp = np.random.binomial(len(ciphertext), bp / len(ciphertext))
-                new_decode_map_l = decode_map_l
-                new_decode_map_r = decode_map_r
-            new_plain_inds, new_log_prob = get_plain_log_prob_bp(cipher_inds, new_decode_map_l, new_decode_map_r, new_bp)
+    cipher = Cipher.new(has_breakpoint, len(ciphertext))
+    plain_inds = cipher.decode(cipher_inds)
+    log_prob = get_log_prob(plain_inds)
+    for it in range(N):
+        new_cipher = cipher.transition()
+        new_plain_inds = new_cipher.decode(cipher_inds)
+        new_log_prob = get_log_prob(new_plain_inds)
+        if debug:
             acceptance_log_probs.append(new_log_prob - log_prob)
-            if np.random.uniform() < np.exp2(new_log_prob - log_prob):
-                decode_map_l = new_decode_map_l
-                decode_map_r = new_decode_map_r
-                bp = new_bp
-                plain_inds = new_plain_inds
-                log_prob = new_log_prob
-                plaintext = "".join([ALPHABET[i] for i in plain_inds])
+        if np.random.uniform() < np.exp2(new_log_prob - log_prob):
+            cipher = new_cipher
+            plain_inds = new_plain_inds
+            log_prob = new_log_prob
+            if debug:
                 acceptances.append(True)
-            else:
-                acceptances.append(False)
+        elif debug:
+            acceptances.append(False)
+        if debug:
             log_probs.append(log_prob)
-            if debug and (it + 1) % 1000 == 0:
+            if (it + 1) % 1 == 0:
                 logger.info(it)
-                logger.info(log_prob / len(ciphertext))
-                logger.info(plaintext)
-    else:
-        decode_map = np.random.permutation(len(ALPHABET))
-        plain_inds, log_prob = get_plain_log_prob(cipher_inds, decode_map)
-        for it in range(N):
-            new_decode_map = np.copy(decode_map)
-            i, j = random_idx_pair(len(ALPHABET))
-            new_decode_map[i], new_decode_map[j] = new_decode_map[j], new_decode_map[i]
-            new_plain_inds, new_log_prob = get_plain_log_prob(cipher_inds, new_decode_map)
-            acceptance_log_probs.append(new_log_prob - log_prob)
-            if np.random.uniform() < np.exp2(new_log_prob - log_prob):
-                decode_map = new_decode_map
-                plain_inds = new_plain_inds
-                log_prob = new_log_prob
+                logger.info(f"ACCEPTANCE LOG PROB: {acceptance_log_probs[-1]}")
+                logger.info(f"LOG PROB PER SYMB: {log_prob / len(ciphertext)}")
                 plaintext = "".join([ALPHABET[i] for i in plain_inds])
-                acceptances.append(True)
-            else:
-                acceptances.append(False)
-            log_probs.append(log_prob)
-            if debug and (it + 1) % 1000 == 0:
-                logger.info(it)
-                logger.info(log_prob / len(ciphertext))
                 logger.info(plaintext)
     if debug:
         # PLOT LOG PROB OF ACCEPTANCE RATIO
@@ -126,21 +171,21 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_n
         plt.savefig(f"{test_name}_s{seed}_log_probs_per_sym.png")
         plt.clf()
         # PLOT ACCEPTANCE RATE
-        W = 200
-        sliding_sums = [np.sum(acceptances[:W])]
-        for t in range(W, len(acceptances)):
-            sliding_sums.append(sliding_sums[-1] + acceptances[t] - acceptances[t-W])
-        plt.plot(np.arange(W - 1, len(acceptances)), np.array(sliding_sums) / W)
-        plt.xlabel("Iteration")
-        plt.ylabel("Acceptance rate")
-        plt.savefig(f"{test_name}_s{seed}_acceptance.png")
-        plt.clf()
+        # W = 200
+        # sliding_sums = [np.sum(acceptances[:W])]
+        # for t in range(W, len(acceptances)):
+        #     sliding_sums.append(sliding_sums[-1] + acceptances[t] - acceptances[t-W])
+        # plt.plot(np.arange(W - 1, len(acceptances)), np.array(sliding_sums) / W)
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Acceptance rate")
+        # plt.savefig(f"{test_name}_s{seed}_acceptance.png")
+        # plt.clf()
         # PLOT DECODING ACCURACY
         # plt.plot(np.arange(N), accs)
         # plt.xlabel("Iteration")
         # plt.ylabel("Decoding accuracy")
         # plt.savefig("acc.png")
-    return plaintext, bp, log_probs[-1]
+    return cipher, plain_inds, log_prob
 
 
 def swap_letters(word, letter1, letter2, left_idx=0, right_idx=float('inf')):
@@ -152,19 +197,6 @@ def swap_letters(word, letter1, letter2, left_idx=0, right_idx=float('inf')):
 
 def strip_period(word):
     return word if not word or word[-1] != '.' else word[:-1]
-
-
-def random_idx_pair(num_idxs, skip=None):
-    i = np.random.choice(num_idxs - (skip is not None))
-    j = np.random.choice(num_idxs - 1 - (skip is not None))
-    if j >= i:
-        j += 1
-    if skip is not None:
-        if i >= skip:
-            i += 1
-        if j >= skip:
-            j += 1
-    return i, j
 
 
 def finetune_words(plaintext, plain_words, bp_idxs, N_finetune, seed=None):
@@ -229,8 +261,10 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
         num_attempts_finetune = 4
     with Pool() as p:
         results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, test_name, debug) for seed in range(num_attempts)])
-        plaintext, bp, log_prob = max(results, key=lambda item: item[2])
+        cipher, plain_inds, log_prob = max(results, key=lambda item: item[2])
+        plaintext = "".join([ALPHABET[i] for i in plain_inds])
         if has_breakpoint:
+            bp = cipher.bp
             plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
             plain_words = plaintext_bp.split()
             for bp_word_idx in range(len(plain_words)):
