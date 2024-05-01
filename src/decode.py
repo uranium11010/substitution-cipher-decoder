@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections import defaultdict
 import logging
 logger = logging.getLogger(__name__)
 
@@ -24,13 +25,42 @@ M = np.load("transitions_3gram_google.npy")
 log_M = np.log2(M)
 log_M[np.isinf(log_M)] = -25
 
-with open("data/google-10000-english.txt", 'r') as f:
-    word_list = {line[:-1] for line in f.readlines()}
+# with open("data/google-10000-english.txt", 'r') as f:
+#     word_list = {line[:-1] for line in f.readlines()}
+with open("data/google-books-common-words.txt", 'r') as f:
+    word_list = {line[:line.find('\t')].lower() for line in f.readlines()}
+word_list_dict = defaultdict(list)
+for word in word_list:
+    word_inds = np.array([LETTER_TO_IDX[c] for c in word])
+    word_list_dict[len(word)].append(word_inds)
+word_array_dict = {}
+for word_length, words in word_list_dict.items():
+    word_array_dict[word_length] = np.vstack(words)
 
 
-def get_log_prob(plain_inds: NDArray):
+def get_log_prob(plain_inds: NDArray, use_words=False):
     # return log_P[plain_inds[0]] + np.sum(log_M[plain_inds[1:], plain_inds[:-1]])
-    return log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
+    trigram_log_prob = log_P[plain_inds[0], plain_inds[1]] + np.sum(log_M[plain_inds[:-2], plain_inds[1:-1], plain_inds[2:]])
+    if not use_words:
+        return trigram_log_prob
+    space_locs = np.arange(len(plain_inds), dtype=int)[plain_inds == LETTER_TO_IDX[' ']]
+    space_locs = np.concatenate([np.array([-1], dtype=int), space_locs, np.array([len(plain_inds)])])
+    plain_word_list_dict = {word_length: [] for word_length in word_array_dict}
+    plain_word_lengths = space_locs[1:] - space_locs[:-1] - 1
+    total_mismatch_count = 0
+    for i, word_length in enumerate(plain_word_lengths):
+        if word_length in word_array_dict:
+            plain_word_list_dict[word_length].append(plain_inds[space_locs[i]+1:space_locs[i+1]])
+        else:
+            total_mismatch_count += word_length
+    for word_length, plain_word_list in plain_word_list_dict.items():
+        if not plain_word_list:
+            continue
+        plain_word_array = np.vstack(plain_word_list)
+        mismatch_counts = np.sum(np.expand_dims(plain_word_array, axis=1) != np.expand_dims(word_array_dict[word_length], axis=0), axis=2)
+        best_mismatches = np.min(mismatch_counts, axis=1)
+        total_mismatch_count += np.sum(best_mismatches)
+    return -total_mismatch_count * 10 + trigram_log_prob
 
 
 def random_idx_pair(num_idxs, skip=None):
@@ -121,20 +151,20 @@ class CipherBp(Cipher):
         return plain_inds
 
 
-def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_name="test", debug=False):
+def decode_once(ciphertext: str, has_breakpoint: bool, N: int, init_cipher=None, finetune=False, seed=None, test_name="test", debug=False):
     if debug:
         log_probs = []
         acceptance_log_probs = []
         acceptances = []
     np.random.seed(seed)
     cipher_inds = np.array([LETTER_TO_IDX[c] for c in ciphertext])
-    cipher = Cipher.new(has_breakpoint, len(ciphertext))
+    cipher = Cipher.new(has_breakpoint, len(ciphertext)) if init_cipher is None else init_cipher
     plain_inds = cipher.decode(cipher_inds)
-    log_prob = get_log_prob(plain_inds)
+    log_prob = get_log_prob(plain_inds, use_words=finetune)
     for it in range(N):
         new_cipher = cipher.transition()
         new_plain_inds = new_cipher.decode(cipher_inds)
-        new_log_prob = get_log_prob(new_plain_inds)
+        new_log_prob = get_log_prob(new_plain_inds, use_words=finetune)
         if debug:
             acceptance_log_probs.append(new_log_prob - log_prob)
         if np.random.uniform() < np.exp2(new_log_prob - log_prob):
@@ -147,29 +177,30 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, seed=None, test_n
             acceptances.append(False)
         if debug:
             log_probs.append(log_prob)
-            if (it + 1) % 1 == 0:
+            if (it + 1) % 100 == 0:
                 logger.info(it)
                 logger.info(f"ACCEPTANCE LOG PROB: {acceptance_log_probs[-1]}")
                 logger.info(f"LOG PROB PER SYMB: {log_prob / len(ciphertext)}")
                 plaintext = "".join([ALPHABET[i] for i in plain_inds])
                 logger.info(plaintext)
     if debug:
+        pass
         # PLOT LOG PROB OF ACCEPTANCE RATIO
-        acceptance_probs = np.exp2(acceptance_log_probs)
-        acceptance_probs[acceptance_probs > 2.2] = 2.2
-        plt.scatter(np.arange(N), acceptance_probs, s=1, marker='.')
-        plt.xlabel("Iteration")
-        plt.ylabel("Acceptance ratio")
-        plt.savefig(f"{test_name}_s{seed}_probs_A.png")
-        plt.clf()
+        # acceptance_probs = np.exp2(acceptance_log_probs)
+        # acceptance_probs[acceptance_probs > 2.2] = 2.2
+        # plt.scatter(np.arange(N), acceptance_probs, s=1, marker='.')
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Acceptance ratio")
+        # plt.savefig(f"{test_name}_s{seed}_probs_A.png")
+        # plt.clf()
         # PLOT LOG PROB OF ACCEPTED STATE
-        plt.subplots_adjust(left=0.2)
-        plt.plot(np.arange(N), np.array(log_probs) / len(ciphertext))
-        plt.ylim([-11, 0])
-        plt.xlabel("Iteration")
-        plt.ylabel("Log probability per symbol (bits)")
-        plt.savefig(f"{test_name}_s{seed}_log_probs_per_sym.png")
-        plt.clf()
+        # plt.subplots_adjust(left=0.2)
+        # plt.plot(np.arange(N), np.array(log_probs) / len(ciphertext))
+        # plt.ylim([-11, 0])
+        # plt.xlabel("Iteration")
+        # plt.ylabel("Log probability per symbol (bits)")
+        # plt.savefig(f"{test_name}_s{seed}_log_probs_per_sym.png")
+        # plt.clf()
         # PLOT ACCEPTANCE RATE
         # W = 200
         # sliding_sums = [np.sum(acceptances[:W])]
@@ -260,9 +291,10 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
         N_finetune = 2000
         num_attempts_finetune = 4
     with Pool() as p:
-        results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, seed, test_name, debug) for seed in range(num_attempts)])
+        results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N, None, False, seed, test_name, False) for seed in range(num_attempts)])
         cipher, plain_inds, log_prob = max(results, key=lambda item: item[2])
         plaintext = "".join([ALPHABET[i] for i in plain_inds])
+        logger.info(f"INTERMEDIATE: {plaintext}")
         if has_breakpoint:
             bp = cipher.bp
             plaintext_bp = plaintext[:bp] + '|' + plaintext[bp:]
@@ -279,8 +311,11 @@ def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug
             plain_words = plaintext.split()
             bp_idxs = None
         finetune_results = p.starmap(finetune_words, [(plaintext, plain_words, bp_idxs, N_finetune, seed) for seed in range(num_attempts_finetune)])
+        # finetune_results = p.starmap(decode_once, [(ciphertext, has_breakpoint, N_finetune, cipher, True, seed, test_name, debug) for seed in range(num_attempts_finetune)])
     plaintext, improvement = max(finetune_results, key=lambda item: item[1])
+    # cipher, plain_inds, log_prob = max(finetune_results, key=lambda item: item[2])
+    # plaintext = "".join([ALPHABET[i] for i in plain_inds])
     if debug:
         logger.info(f"Finetune improvement: {improvement}")
-        logger.info(f"Final: {plaintext}")
+        logger.info(f"FINAL: {plaintext}")
     return plaintext
