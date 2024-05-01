@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from collections import defaultdict
 import logging
@@ -84,7 +82,7 @@ class Cipher(ABC):
         return CipherNoBp(ciphertext_len)
 
     @abstractmethod
-    def transition(self) -> Cipher:
+    def transition(self):
         pass
 
     @abstractmethod
