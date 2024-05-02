@@ -12,6 +12,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from .encode import ALPHABET, LETTER_TO_IDX
+from .utils import random_idx_pair, swap_letters
 
 # P = np.array(pd.read_csv("data/letter_probabilities.csv", header=None))[0]
 P = np.load("begin_2gram_probs_google.npy")
@@ -22,10 +23,12 @@ M = np.load("transitions_3gram_google.npy")
 log_M = np.log2(M)
 log_M[np.isinf(log_M)] = -25
 
-# with open("data/google-10000-english.txt", 'r') as f:
-#     word_list = {line[:-1] for line in f.readlines()}
-with open("data/google-books-common-words.txt", 'r') as f:
-    word_list = {line[:line.find('\t')].lower() for line in f.readlines()}
+with open("data/google-10000-english.txt", 'r') as f:
+    word_list = {line[:-1] for line in f.readlines()}
+with open("data/google-10000-english-oneaway.txt", 'r') as f:
+    word_oneaway_list = {line[:-1] for line in f.readlines()}
+# with open("data/google-books-common-words.txt", 'r') as f:
+#     word_list = {line[:line.find('\t')].lower() for line in f.readlines()}
 word_list_dict = defaultdict(list)
 for word in word_list:
     word_inds = np.array([LETTER_TO_IDX[c] for c in word])
@@ -58,19 +61,6 @@ def get_log_prob(plain_inds: np.ndarray, use_words=False):
         best_mismatches = np.min(mismatch_counts, axis=1)
         total_mismatch_count += np.sum(best_mismatches)
     return -total_mismatch_count * 10 + trigram_log_prob
-
-
-def random_idx_pair(num_idxs, skip=None):
-    i = np.random.choice(num_idxs - (skip is not None))
-    j = np.random.choice(num_idxs - 1 - (skip is not None))
-    if j >= i:
-        j += 1
-    if skip is not None:
-        if i >= skip:
-            i += 1
-        if j >= skip:
-            j += 1
-    return i, j
 
 
 class Cipher(ABC):
@@ -216,20 +206,25 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, init_cipher=None,
     return cipher, plain_inds, log_prob
 
 
-def swap_letters(word, letter1, letter2, left_idx=0, right_idx=float('inf')):
-    return ''.join(letter1 if left_idx <= i < right_idx and letter == letter2
-                   else (letter2 if left_idx <= i < right_idx and letter == letter1
-                         else letter)
-                   for i, letter in enumerate(word))
-
-
 def strip_period(word):
     return word if not word or word[-1] != '.' else word[:-1]
 
 
+def get_num_bad(plain_words):
+    num_bad = 0
+    for word in plain_words:
+        stripped_word = strip_period(word)
+        if stripped_word not in word_list:
+            if stripped_word not in word_oneaway_list:
+                num_bad += 2
+            else:
+                num_bad += 1
+    return num_bad
+
+
 def finetune_words(plaintext, plain_words, bp_idxs, N_finetune, seed=None):
     np.random.seed(seed)
-    num_bad = init_num_bad = sum(strip_period(word) not in word_list for word in plain_words)
+    num_bad = init_num_bad = get_num_bad(plain_words)
     if num_bad == 0:
         return plaintext, 0
     if bp_idxs is None:
@@ -238,7 +233,7 @@ def finetune_words(plaintext, plain_words, bp_idxs, N_finetune, seed=None):
             letter1 = ALPHABET[i]
             letter2 = ALPHABET[j]
             plain_words_swapped = [swap_letters(word, letter1, letter2) for word in plain_words]
-            new_num_bad = sum(strip_period(word_swapped) not in word_list for word_swapped in plain_words_swapped)
+            new_num_bad = get_num_bad(plain_words_swapped)
             if new_num_bad < num_bad:
                 plain_words = plain_words_swapped
                 plaintext = swap_letters(plaintext, letter1, letter2)
@@ -261,7 +256,7 @@ def finetune_words(plaintext, plain_words, bp_idxs, N_finetune, seed=None):
                                            left_idx=0 if left else bp_char_idx,
                                            right_idx=bp_char_idx if left else len(bp_word))
             plain_words_swapped[bp_word_idx] = bp_word_swapped
-            new_num_bad = sum(strip_period(word_swapped) not in word_list for word_swapped in plain_words_swapped)
+            new_num_bad = get_num_bad(plain_words_swapped)
             if new_num_bad < num_bad:
                 plain_words = plain_words_swapped
                 plaintext = swap_letters(plaintext, letter1, letter2,
