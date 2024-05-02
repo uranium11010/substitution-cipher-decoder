@@ -145,9 +145,9 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, init_cipher=None,
         acceptances = []
     np.random.seed(seed)
     cipher_inds = np.array([LETTER_TO_IDX[c] for c in ciphertext])
-    cipher = Cipher.new(has_breakpoint, len(ciphertext)) if init_cipher is None else init_cipher
-    plain_inds = cipher.decode(cipher_inds)
-    log_prob = get_log_prob(plain_inds, use_words=finetune)
+    cur_best_cipher = cipher = Cipher.new(has_breakpoint, len(ciphertext)) if init_cipher is None else init_cipher
+    cur_best_plain_inds = plain_inds = cipher.decode(cipher_inds)
+    cur_best_log_prob = log_prob = get_log_prob(plain_inds, use_words=finetune)
     for it in range(N):
         new_cipher = cipher.transition()
         new_plain_inds = new_cipher.decode(cipher_inds)
@@ -158,6 +158,10 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, init_cipher=None,
             cipher = new_cipher
             plain_inds = new_plain_inds
             log_prob = new_log_prob
+            if log_prob > cur_best_log_prob:
+                cur_best_log_prob = log_prob
+                cur_best_plain_inds = plain_inds
+                cur_best_cipher = cipher
             if debug:
                 acceptances.append(True)
         elif debug:
@@ -203,7 +207,7 @@ def decode_once(ciphertext: str, has_breakpoint: bool, N: int, init_cipher=None,
         # plt.xlabel("Iteration")
         # plt.ylabel("Decoding accuracy")
         # plt.savefig("acc.png")
-    return cipher, plain_inds, log_prob
+    return cur_best_cipher, cur_best_plain_inds, cur_best_log_prob
 
 
 def strip_period(word):
