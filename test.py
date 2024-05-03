@@ -151,6 +151,7 @@ def parse_args():
     parser.add_argument("--short", action="store_true")
     parser.add_argument("--length", nargs='+', type=int)
     parser.add_argument("--select", nargs='+')
+    parser.add_argument("-n", type=int)
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     assert args.length is None or len(args.length) == 2
@@ -190,9 +191,10 @@ def main():
             continue
         test_names.append(test_name)
 
-    print(f"{len(test_names)} tests selected")
+    num_tests = min(args.n, len(test_names))
+    print(f"{num_tests} tests selected")
     print()
-    for i, test_name in enumerate(sorted(test_names)):
+    for i, test_name in zip(range(num_tests), sorted(test_names)):
         plaintext = first_line(os.path.join(test_case_path, test_name + '.out'))
         print(f"Test #{i+1}: {test_name}")
         print(f"Length: {len(plaintext)}")
