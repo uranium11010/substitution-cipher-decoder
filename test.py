@@ -191,7 +191,7 @@ def main():
             continue
         test_names.append(test_name)
 
-    num_tests = min(args.n, len(test_names))
+    num_tests = len(test_names) if args.n is None else min(args.n, len(test_names))
     print(f"{num_tests} tests selected")
     print()
     for i, test_name in zip(range(num_tests), sorted(test_names)):
