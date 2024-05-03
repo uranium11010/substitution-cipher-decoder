@@ -27,8 +27,7 @@ import random
 import typing
 import unicodedata
 
-ALPHABET = list(string.ascii_lowercase) + [" ", "."]
-LETTER_TO_IDX = dict(map(reversed, enumerate(ALPHABET)))
+from .constants import ALPHABET, LETTER_TO_IDX
 
 
 def _clean_text(text: typing.AnyStr) -> str:
