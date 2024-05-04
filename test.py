@@ -202,7 +202,7 @@ def main():
         if args.no_bp:
             ciphertext = first_line(os.path.join(test_case_path, test_name + '.in'))
             print("Running no breakpoint test...")
-            res = run_decode_cli(executable_path, ciphertext, False, test_name=test_name, debug=args.debug)
+            res = run_decode_cli(executable_path, ciphertext, False, debug_file_name=test_name, debug=args.debug)
             fail_if_crash(res)
             num_match = count_matches(plaintext, res.stdout)
             total_match_no_bp += num_match
@@ -216,7 +216,7 @@ def main():
         if args.bp:
             ciphertext_with_breakpoint = first_line(os.path.join(test_case_path, test_name + '_bp.in'))
             print("Running breakpoint test...")
-            res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True, test_name=f"{test_name}_bp", debug=args.debug)
+            res = run_decode_cli(executable_path, ciphertext_with_breakpoint, True, debug_file_name=f"{test_name}_bp", debug=args.debug)
             fail_if_crash(res)
             num_match = count_matches(plaintext, res.stdout)
             total_match_bp += num_match

@@ -51,29 +51,29 @@ def finetune_words(
     ) -> Tuple[str, int]:
     plain_words = plaintext.split()
     np.random.seed(seed)
-    num_bad = init_num_bad = get_num_bad_words(map(strip_period, plain_words))
-    if num_bad == 0:
+    num_bad_words = init_num_bad_words = get_num_bad_words(map(strip_period, plain_words))
+    if num_bad_words == 0:
         return plaintext, 0
     for it in range(num_it):
         plain_words_swapped, letter1, letter2, left_idx, right_idx = swap_random_letters(plain_words, bp_word_char_idxs)
-        new_num_bad = get_num_bad_words(map(strip_period, plain_words_swapped))
-        if new_num_bad < num_bad:
+        new_num_bad_words = get_num_bad_words(map(strip_period, plain_words_swapped))
+        if new_num_bad_words < num_bad_words:
             plain_words = plain_words_swapped
             plaintext = swap_letters(plaintext, letter1, letter2, left_idx, right_idx)
-            num_bad = new_num_bad
-            if num_bad == 0:
+            num_bad_words = new_num_bad_words
+            if num_bad_words == 0:
                 break
-    return plaintext, init_num_bad - num_bad
+    return plaintext, init_num_bad_words - num_bad_words
 
 
-def decode(ciphertext: str, has_breakpoint: bool, test_name: str = "test", debug: bool = False) -> str:
+def decode(ciphertext: str, has_breakpoint: bool, debug_file_name: str = "test", debug: bool = False) -> str:
     if debug:
-        logging.basicConfig(filename=f"debug_{test_name}.log", level=logging.INFO)
+        logging.basicConfig(filename=f"debug_{debug_file_name}.log", level=logging.INFO)
         logging.info('>' * 50 + str(datetime.now()))
     # Hyperparameters
     num_it_mh = 5000
     num_attempts_mh = 4
-    num_ciphers_mh = 16
+    num_ciphers_mh = 128
     num_it_ft = 2000
     num_attempts_ft = 4
     # Run several attempts in parallel
