@@ -103,8 +103,9 @@ class CipherBpArray(CipherArray):
             else:
                 self.last_changes.append(("bp", self.bp[k]))
                 new_bp = self.bp[k]
-                while new_bp == self.bp[k] or new_bp == 0 or new_bp == self.ciphertext_len:
-                    new_bp = np.random.binomial(self.ciphertext_len, self.bp[k] / self.ciphertext_len)
+                while new_bp == self.bp[k]:
+                    clipped_bp = max(1, min(self.bp[k], self.ciphertext_len - 1))
+                    new_bp = np.random.binomial(self.ciphertext_len, clipped_bp / self.ciphertext_len)
                 self.bp[k] = new_bp
 
     def accept(self, acceptances):

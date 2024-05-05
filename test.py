@@ -39,7 +39,7 @@ def run_decode_cli(
     has_breakpoint: bool,
     command_prefix: Optional[List[str]] = None,
     timeout_secs: Optional[float] = None,
-    test_name: Optional[str] = None,
+    debug_file_name: Optional[str] = None,
     debug: bool = False,
 ) -> RunResult:
     """
@@ -75,7 +75,7 @@ def run_decode_cli(
                 f"./{executable_file}",
                 ciphertext,
                 str(has_breakpoint),
-                test_name or "test",
+                debug_file_name or "test",
                 str(debug),
             ],
             start_new_session=True,

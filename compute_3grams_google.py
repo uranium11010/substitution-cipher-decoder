@@ -7,8 +7,6 @@ letter_probs = np.array(pd.read_csv("data/letter_probabilities.csv", header=None
 period_prob = letter_probs[LETTER_TO_IDX['.']] / letter_probs[LETTER_TO_IDX[' ']]
 space_prob = 1 - period_prob
 transition_probs = np.array(pd.read_csv("data/letter_transition_matrix.csv", header=None))
-bigram_probs = transition_probs * letter_probs
-rev_transition_probs = bigram_probs / np.expand_dims(np.sum(bigram_probs, axis=1), axis=1)
 transition_probs = transition_probs.T
 
 file = "data/google-books-common-words.txt"
