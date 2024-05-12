@@ -173,10 +173,6 @@ def main():
     assert_clean(dummy_text)
 
     test_case_path = "data/test_cases"
-    total_match_no_bp = 0
-    total_compared_no_bp = 0
-    total_match_bp = 0
-    total_compared_bp = 0
     test_names = []
     for test_file in os.listdir(test_case_path):
         test_name, ext = os.path.splitext(test_file)
@@ -194,6 +190,13 @@ def main():
     num_tests = len(test_names) if args.n is None else min(args.n, len(test_names))
     print(f"{num_tests} tests selected")
     print()
+
+    total_match_no_bp = 0
+    total_compared_no_bp = 0
+    total_time_no_bp = 0
+    total_match_bp = 0
+    total_compared_bp = 0
+    total_time_bp = 0
     for i, test_name in zip(range(num_tests), sorted(test_names)):
         plaintext = first_line(os.path.join(test_case_path, test_name + '.out'))
         print(f"Test #{i+1}: {test_name}")
@@ -207,6 +210,7 @@ def main():
             num_match = count_matches(plaintext, res.stdout)
             total_match_no_bp += num_match
             total_compared_no_bp += len(plaintext)
+            total_time_no_bp += res.elapsed_secs
             print(
                 f"Score (no breakpoint): {num_match} out of {len(plaintext)}"
             )
@@ -221,6 +225,7 @@ def main():
             num_match = count_matches(plaintext, res.stdout)
             total_match_bp += num_match
             total_compared_bp += len(plaintext)
+            total_time_bp += res.elapsed_secs
             print(
                 f"Score (breakpoint): {num_match} out of {len(plaintext)}"
             )
@@ -234,10 +239,14 @@ def main():
 
     total_match = total_match_bp + total_match_no_bp
     total_compared = total_compared_bp + total_compared_no_bp
+    total_time = total_time_bp + total_time_no_bp
     print(f"Total score: {total_match}/{total_compared} = {total_match / total_compared}")
+    print(f"Average time per test case: {total_time}/{2 * num_tests} = {total_time / (2 * num_tests)}")
     if args.bp and args.no_bp:
         print(f"No breakpoint score: {total_match_no_bp}/{total_compared_no_bp} = {total_match_no_bp / total_compared_no_bp}")
+        print(f"Average time per test case: {total_time_no_bp}/{num_tests} = {total_time_no_bp / num_tests}")
         print(f"Breakpoint score: {total_match_bp}/{total_compared_bp} = {total_match_bp / total_compared_bp}")
+        print(f"Average time per test case: {total_time_bp}/{num_tests} = {total_time_bp / num_tests}")
     print()
 
     print("Checking that you are not hardcoding inputs...")
