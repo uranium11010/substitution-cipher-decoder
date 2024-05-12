@@ -146,12 +146,12 @@ def fail_if_crash(rr: RunResult):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bp", action="store_true")
-    parser.add_argument("--no_bp", action="store_true")
-    parser.add_argument("--short", action="store_true")
-    parser.add_argument("--length", nargs='+', type=int)
-    parser.add_argument("--select", nargs='+')
-    parser.add_argument("-n", type=int)
+    parser.add_argument("--bp", action="store_true", help="Only test on breakpoint setting")
+    parser.add_argument("--no_bp", action="store_true", help="Only test on no-breakpoint setting")
+    parser.add_argument("--short", action="store_true", help="Test on short texts")
+    parser.add_argument("--length", nargs='+', type=int, help="Test only on texts with length in the given range")
+    parser.add_argument("--select", nargs='+', help="Select particular test cases by name")
+    parser.add_argument("-n", type=int, help="Only run this many test cases")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
     assert args.length is None or len(args.length) == 2
