@@ -3,6 +3,7 @@ import numpy as np
 
 ALPHABET = list(string.ascii_lowercase) + [" ", "."]
 LETTER_TO_IDX = dict(map(reversed, enumerate(ALPHABET)))
+ALPHABET_SIZE = len(ALPHABET)
 
 P = np.load("begin_2gram_probs_google.npy")
 LOG_P = np.log2(P)
