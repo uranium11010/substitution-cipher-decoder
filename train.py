@@ -1,4 +1,5 @@
 import argparse
+from tqdm import tqdm
 
 import numpy as np
 import torch
@@ -24,9 +25,10 @@ def do_test(model, dataloader):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lr", type=float, default=0.0002)
-    parser.add_argument("--hidden_dim", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=6)
+    parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--hidden_dim", type=int, default=512)
+    parser.add_argument("--num_layers", type=int, default=9)
     parser.add_argument("--num_heads", type=int, default=4)
     parser.add_argument("--batch_size", type=int, default=64)
     args = parser.parse_args()
@@ -51,11 +53,11 @@ if __name__ == "__main__":
 
     alphabet_inds = torch.arange(ALPHABET_SIZE)
 
-    for epoch in range(100000):
+    for epoch in range(args.num_epochs):
         model.train()
         num_texts = 0
         num_correct = 0
-        for b_idx, train_batch in enumerate(train_dataloader):
+        for b_idx, train_batch in enumerate(tqdm(train_dataloader)):
             num_texts += len(train_batch)
             optimizer.zero_grad()
             logits = model(train_batch)
@@ -65,12 +67,11 @@ if __name__ == "__main__":
             optimizer.step()
             preds = logits.argmax(-1)
             num_correct += torch.sum(torch.gather(preds, 1, train_batch.long()) == train_batch.long())
-        if (epoch + 1) % 100 == 0:
-            print(''.join(ALPHABET), ''.join(ALPHABET), ''.join(ALPHABET))
-            print(' '.join(''.join([ALPHABET[idx] for idx in preds[i]]) for i in range(-3, 0)))
-            train_acc = num_correct / (num_texts * train_batch.shape[1])
-            model.eval()
-            valid_acc = do_test(model, valid_dataloader)
-            print(f"EPOCH {epoch} TRAIN ACC: {train_acc:.6f}; VALID ACC: {valid_acc:.6f}")
+        print(''.join(ALPHABET), ''.join(ALPHABET), ''.join(ALPHABET))
+        print(' '.join(''.join([ALPHABET[idx] for idx in preds[i]]) for i in range(-3, 0)))
+        train_acc = num_correct / (num_texts * train_batch.shape[1])
+        model.eval()
+        valid_acc = do_test(model, valid_dataloader)
+        print(f"EPOCH {epoch} TRAIN ACC: {train_acc:.6f}; VALID ACC: {valid_acc:.6f}")
     test_acc = do_test(model, test_dataloader)
     print(f"TEST ACC: {test_acc:.6f}")

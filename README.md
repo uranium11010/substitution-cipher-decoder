@@ -62,3 +62,8 @@ where
 * `debug` specifies whether to print debug messages into the debugging log
 
 Decoding a ciphertext usually takes ~15 seconds.
+
+## Using a transformer-like model to directly predict the decoding
+
+Training and validation data:
+* [The Canterbury Corpus](https://corpus.canterbury.ac.nz/descriptions/)

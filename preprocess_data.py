@@ -1,8 +1,9 @@
 # SPLIT BY TEXT
 plaintext_files_dict = {
-    "train": ["data/texts/tolstoy.txt"],
-    "valid": ["data/texts/feynman.txt"],
-    "test": ["data/texts/milton.txt"],
+    "train": ["data/texts/alice29.txt", "data/texts/book1.txt", "data/texts/book2.txt",
+              "data/texts/lcet10.txt", "data/texts/paper1.txt", "data/texts/plrabn12.txt"],
+    "valid": ["data/texts/asyoulik.txt", "data/texts/paper2.txt"],
+    "test": ["data/texts/tolstoy.txt", "data/texts/feynman.txt", "data/texts/milton.txt"],
 }
 for split in ["train", "valid", "test"]:
     plaintext_files = plaintext_files_dict[split]
