@@ -37,7 +37,10 @@ def _clean_text(text: typing.AnyStr) -> str:
 
     text = text.lower()  # make lowercase
     text = text.replace("?", ".").replace("!", ".")
-    for c in "/-\n\r":
+    contractions = ["n't", "'s", "'d", "'ll", "'re", "'ve"]
+    for contraction in contractions:
+        text = text.replace(' ' + contraction + ' ', contraction + ' ')
+    for c in "/-\n\r\t":
         text = text.replace(c, " ")
     text = "".join(filter(ALPHABET.__contains__,
                           text))  # filter to alphabet chars

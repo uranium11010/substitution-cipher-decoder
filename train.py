@@ -15,7 +15,7 @@ def do_test(model, dataloader):
     with torch.no_grad():
         num_texts = 0
         num_correct = 0
-        for b_idx, batch in enumerate(dataloader):
+        for b_idx, batch in enumerate(tqdm(dataloader)):
             num_texts += len(batch)
             logits = model(batch)
             preds = logits.argmax(-1)
@@ -54,6 +54,7 @@ if __name__ == "__main__":
     alphabet_inds = torch.arange(ALPHABET_SIZE)
 
     for epoch in range(args.num_epochs):
+        print(f"EPOCH {epoch} TRAINING...")
         model.train()
         num_texts = 0
         num_correct = 0
@@ -70,6 +71,7 @@ if __name__ == "__main__":
         print(''.join(ALPHABET), ''.join(ALPHABET), ''.join(ALPHABET))
         print(' '.join(''.join([ALPHABET[idx] for idx in preds[i]]) for i in range(-3, 0)))
         train_acc = num_correct / (num_texts * train_batch.shape[1])
+        print(f"EPOCH {epoch} EVALUATING...")
         model.eval()
         valid_acc = do_test(model, valid_dataloader)
         print(f"EPOCH {epoch} TRAIN ACC: {train_acc:.6f}; VALID ACC: {valid_acc:.6f}")

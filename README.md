@@ -67,3 +67,4 @@ Decoding a ciphertext usually takes ~15 seconds.
 
 Training and validation data:
 * [The Canterbury Corpus](https://corpus.canterbury.ac.nz/descriptions/)
+* [corpusdata.org](https://www.corpusdata.org/formats.asp)
