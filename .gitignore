@@ -2,8 +2,4 @@ src/__pycache__/
 submission.zip
 *.png
 *.log
-data/raw_texts/
-data/texts/for_training/
-data/train*
-data/valid*
-data/test*
+data/
