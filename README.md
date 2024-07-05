@@ -1,70 +1,63 @@
-# Substitution cipher decoder
-
-Final project for MIT 6.7800 (6.437). My writeup is [here](writeup.pdf).
+# Plaintext-only training of neural substitution cipher decoder
 
 ## Task
 
 A *substitution cipher* is a cipher that maps each symbol in the plaintext to a symbol according to a permutation of the alphabet.
-A *breakpoint* is a location in the ciphertext where the cipher changes.
-Our task is to design an algorithm that decodes a ciphertext that is encoded with a single substitution cipher ("no-breakpoint setting")
-or two substitution ciphers on two sides of a breakpoint ("breakpoint setting").
+Our task is to design a neural architecture that decodes a ciphertext encoded with substitution cipher.
 
-## Algorithm
+## Architecture
 
-1. Use Metropolis-Hastings (MH) to sample from the posterior distribution of the cipher conditioned on the ciphertext.
-We use a trigram model of English to model the plaintext, as computed using [`compute_3grams_google.py`](compute_3grams_google.py).
-The proposal distribution in the no-breakpoint setting is a uniformly random transposition (swap of two symbols)
-of the permutation defining the cipher.
-In the breakpoint setting:
-    * With probability $p_{\text{bp}} = 0.1$, change the location $b$ of the breakpoint to $b'$ sampled from the binomial distribution
-    $\mathcal{B}(n, p)$, where $n$ is the length of the text and $p = \mathrm{clip}(b/n, 1, n-1)$.
-    (We resample if $b' = b$.)
-    * With probability $1 - p_{\text{bp}} = 0.9$, choose one of the two substitution ciphers uniformly at random and apply
-    a uniformly random transposition to the permutation defining the cipher.
-
-    We run $A_\text{MH} = 512$ attempts of MH each for $N_\text{MH} = 5000$ iterations.
-    We keep the result of the best run in terms of the log probability of the decoded plaintext under the trigram model.
-    This result enters the finetuning stage below.
-2. Finetune by increasing the number of words that are in the list of the top 10000 most common words.
-We randomly choose two non-space symbols of the cipher to swap. (In the breakpoint setting, we choose the cipher to the left of the breakpoint with
-probability $b/n$ and the cipher to the right with probability $1 - b/n$.)
-If the resultant text after the swap has fewer bad words, then we keep it. Otherwise, we reject it.
-This is done for $N_\text{ft} = 2000$ iterations for $A_\text{ft} = 4$ times.
-We output the result of the best run in terms of the improvement in the number of valid words in the decoded plaintext.
+For each letter of the alphabet, encode the positions at which the letter occurs in the input as a multihot vector.
+These multihot vectors are passed through a Transformer encoder, outputing a distribution over the alphabet
+for each input letter of the alphabet. This defines the mapping from ciphertext letters to plaintext letters.
+Since the Transformer architecture is permutation-equivariant, we only need to train on plaintext
+and the resultant model will automatically work on ciphertext.
 
 ## Results
 
-I achieved first place on the leaderboard out of over 80 participants (students of the class) with an overall decoding accuracy of 99.83%
-(no-breakpoint: 99.98%; breakpoint: 99.74%).
+[TODO]
 
 ## Instructions
 
-We use Python >=3.6 with NumPy.
-
-While designing my algorithm, I made some of my own test cases from the passages given to us under [`data/texts/`](data/texts).
-To run these test cases, run
-```bash
-python test.py
-```
-There are 89 test cases; each has 40 to 400 words.
-Adding the `--short` option runs 909 test cases each with 4 to 39 words.
-To see more options, run `python test.py -h`.
-
-If you want to use my decoder to decode some of your own ciphertexts, use the decoder function located at [`src/decode.py`](src/decode.py):
-```python3
-decode(ciphertext: str, has_breakpoint: bool, debug_file_name: str = "test", debug: bool = False) -> str
-```
-where
-* `ciphertext` is the input ciphertext
-* `has_breakpoint` is whether there's a breakpoint in the encoding function
-(location in the ciphertext where the cipher changes)
-* `debug_file_name` is used in the name of the debugging log when `debug` is `True`
-* `debug` specifies whether to print debug messages into the debugging log
-
-Decoding a ciphertext usually takes ~15 seconds.
-
-## Using a transformer-like model to directly predict the decoding
+We use Python >=3.9 with PyTorch and NumPy.
 
 Training and validation data:
-* [The Canterbury Corpus](https://corpus.canterbury.ac.nz/descriptions/)
-* [corpusdata.org](https://www.corpusdata.org/formats.asp)
+* [English Gigaword Fifth Edition](https://catalog.ldc.upenn.edu/LDC2011T07)
+After obtaining the data (`gigaword_eng_5_LDC2011T07.tgz`),
+create a new directory `data/raw_texts/` and place it there. Extract the contents:
+```
+cd data/raw_texts
+tar -xvzf gigaword_eng_5_LDC2011T07.tgz
+gzip -d gigaword_eng_5/data/*/*
+cd ../..
+```
+Then run the following scripts to create the training and validation sets:
+```
+python clean_corpora.py
+python combine_corpora.py
+python preprocess_train_valid.py
+python split_train_valid.py
+```
+Run the following scripts to create the test set:
+```
+python clean_test_text.py
+python preprocess_test.py
+```
+
+## Statistics of datasets
+
+Stats for entirety of cleaned Gigaword corpora:
+* 3958192089 words in total
+* Word length frequencies:
+```
+{3: 0.1826, 4: 0.1551, 2: 0.1495, 5: 0.1155, 6: 0.0984, 7: 0.0952, 8: 0.0657, 9: 0.0477, 10: 0.0287, 1: 0.0286, 11: 0.0151, 12: 0.0082, 13: 0.0049, 14: 0.0022, 15: 0.0009, 16: 0.0005, 17: 0.0003, 18: 0.0003, 19: 0.0002, 20: 0.0001, 21: 0.0001, 22: 0.0001}
+```
+```
+{3: 722651123, 4: 613922646, 2: 591806497, 5: 457046424, 6: 389578802, 7: 376927570, 8: 260158424, 9: 188981773, 10: 113419403, 1: 113278173, 11: 59732540, 12: 32284822, 13: 19327836, 14: 8693910, 15: 3549076, 16: 1916882, 17: 1256912, 18: 1016705, 19: 684238, 20: 421362, 21: 282256, 22: 224261, 23: 163578, 24: 143021, 25: 123863, 26: 98980, 27: 76396, 28: 65743, 29: 55953, 30: 46345, 31: 38514, 32: 31510, 33: 27299, 34: 25278, 35: 18800, 36: 18721, 37: 13909, 38: 11134, 39: 10198, 40: 8775, 41: 7694, 42: 6325, 43: 5490, 44: 4701, 45: 4628, 46: 4162, 47: 3234, 48: 2641, 49: 2334, 50: 2037, 51: 1647, 52: 1449, 53: 1250, 54: 1050, 55: 853, 56: 741, 57: 543, 58: 426, 60: 281, 59: 273, 61: 133, 62: 92, 63: 72, 64: 72, 66: 59, 67: 59, 65: 46, 68: 40, 72: 13, 71: 12, 70: 10, 69: 7, 77: 6, 73: 5, 86: 5, 89: 5, 82: 4, 74: 3, 80: 3, 76: 3, 78: 2, 91: 2, 103: 2, 92: 2, 88: 2, 102: 1, 99: 1, 75: 1, 97: 1, 85: 1, 83: 1, 139: 1, 118: 1, 87: 1, 84: 1, 96: 1, 143: 1, 105: 1, 98: 1, 79: 1, 109: 1, 93: 1, 81: 1, 94: 1}
+```
+Starts for NYT corpus:
+* 1414893849 words in total
+* Word length frequencies:
+```
+{3: 0.1913, 4: 0.1659, 2: 0.1515, 5: 0.1156, 6: 0.0918, 7: 0.0884, 8: 0.0603, 9: 0.0429, 1: 0.0333, 10: 0.0267, 11: 0.0144, 12: 0.0078, 13: 0.0046, 14: 0.0022, 15: 0.001, 16: 0.0005, 17: 0.0004, 18: 0.0003, 19: 0.0003, 20: 0.0002, 21: 0.0001, 22: 0.0001, 23: 0.0001, 24: 0.0001}
+```

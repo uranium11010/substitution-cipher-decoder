@@ -19,48 +19,28 @@ Can also be used for just cleaning text in the following way:
     python3 encode.py clean.txt /dev/null 0 < dirty.txt
 """
 
-from typing import Tuple
-
 import sys
 import string
+import re
 import random
-import typing
 import unicodedata
 
 from .constants import ALPHABET, LETTER_TO_IDX
 
 
-def _clean_text(text: typing.AnyStr) -> str:
+def _clean_text(text: str) -> str:
     # try and approximate unicode with ascii
-    text = unicodedata.normalize("NFKD", text).encode("ascii",
-                                                      "ignore").decode()
-
-    text = text.lower()  # make lowercase
-    text = text.replace("?", ".").replace("!", ".")
-    contractions = ["n't", "'s", "'d", "'ll", "'re", "'ve"]
-    for contraction in contractions:
-        text = text.replace(' ' + contraction + ' ', contraction + ' ')
-    for c in "/-\n\r\t":
-        text = text.replace(c, " ")
-    text = "".join(filter(ALPHABET.__contains__,
-                          text))  # filter to alphabet chars
-
-    text = text.lstrip(" .")  # filter out leading spaces and periods
-    if text == "":
-        raise ValueError("text needs to have at least one letter")
-
-    ret = ""
-    for x in text:
-        # ret is a valid string after every iteration
-        if x == ".":
-            ret = ret.rstrip(". ") + ". "
-        elif x == " ":
-            ret = ret.rstrip(" ") + " "
-        else:
-            ret += x
-
-    ret = ret.rstrip(" ")  # strip trailing spaces
-    return ret
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    # make lowercase
+    text = text.lower()
+    # replace whitespace characters with space
+    text = re.sub(r"\s", ' ', text)
+    # remove invalid characters
+    text = ''.join(filter(ALPHABET.__contains__, text))
+    # strip spaces, replace contiguous spaces with one
+    text = ' '.join(text.split())
+    assert len(text) > 0, "Cannot have empty text!"
+    return text
 
 
 def assert_clean(text: str):
@@ -68,14 +48,11 @@ def assert_clean(text: str):
 
     assert len(text) > 0
     assert all(x in ALPHABET for x in text)
-    # assert text[0] in string.ascii_lowercase
+    assert text[0] in string.ascii_lowercase
     for i, x in enumerate(text):
-        if x == ".":
-            assert text[i - 1] in string.ascii_lowercase
-            if i + 1 < len(text):
-                assert text[i + 1] == " "
-        elif x == " ":
+        if x == " ":
             assert text[i + 1] in string.ascii_lowercase
+
 
 def clean_text(text: str) -> str:
     clean = _clean_text(text)
@@ -89,11 +66,6 @@ def encode(plaintext: str) -> str:
 
     ciphertext = "".join(cipherbet[LETTER_TO_IDX[c]] for c in plaintext)
     return ciphertext
-
-
-def encode_with_breakpoint(plaintext: str) -> Tuple[str, int]:
-    bpoint = random.randint(0, len(plaintext))
-    return encode(plaintext[:bpoint]) + encode(plaintext[bpoint:]), bpoint
 
 
 def main():

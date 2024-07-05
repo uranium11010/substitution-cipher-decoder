@@ -1,8 +1,9 @@
-from typing import Optional, Iterable, Tuple, List
+import collections
+from typing import Optional, Tuple, List, Iterator
 
 import numpy as np
 
-from .constants import ALPHABET, LETTER_TO_IDX, LOG_P, LOG_M, WORD_LIST
+from .constants import ALPHABET, LETTER_TO_IDX
 
 
 def text_to_inds(text: str) -> np.ndarray:
@@ -61,16 +62,3 @@ def swap_random_letters(
         left_idx = 0 if left else bp
         right_idx = bp if left else None
     return words_swapped, letter1, letter2, left_idx, right_idx
-
-
-def get_trigram_log_prob(plain_inds: np.ndarray) -> np.ndarray:
-    return (LOG_P[plain_inds[...,0], plain_inds[...,1]]
-            + np.sum(LOG_M[plain_inds[...,:-2], plain_inds[...,1:-1], plain_inds[...,2:]], axis=-1))
-
-
-def strip_period(word: str) -> str:
-    return word if not word or word[-1] != '.' else word[:-1]
-
-
-def get_num_bad_words(plain_words: Iterable[str]) -> int:
-    return sum(word not in WORD_LIST for word in plain_words)
